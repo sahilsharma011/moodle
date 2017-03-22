@@ -63,6 +63,13 @@ $CFG->dboptions = array(
                                 // support advanced options on connection.
                                 // If you set those in the database then
                                 // the advanced settings will not be sent.
+    'dbcollation' => 'utf8mb4_unicode_ci', // MySQL has partial and full UTF-8
+                                // support. If you wish to use partial UTF-8
+                                // (three bytes) then set this option to
+                                // 'utf8_unicode_ci', otherwise this option
+                                // can be removed for MySQL (by default it will
+                                // use 'utf8mb4_unicode_ci'. This option should
+                                // be removed for all other databases.
 );
 
 
@@ -261,6 +268,9 @@ $CFG->admin = 'admin';
 //      $CFG->session_redis_prefix = ''; // Optional, default is don't set one.
 //      $CFG->session_redis_acquire_lock_timeout = 120;
 //      $CFG->session_redis_lock_expire = 7200;
+//      Use the igbinary serializer instead of the php default one. Note that phpredis must be compiled with
+//      igbinary support to make the setting to work. Also, if you change the serializer you have to flush the database!
+//      $CFG->session_redis_serializer_use_igbinary = false; // Optional, default is PHP builtin serializer.
 //
 //   Memcache session handler (requires memcached server and memcache extension):
 //      $CFG->session_handler_class = '\core\session\memcache';
@@ -375,7 +385,15 @@ $CFG->admin = 'admin';
 //     LogFormat "%h %l %{MOODLEUSER}n %t \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\"" moodleformat
 // And in the part specific to your Moodle install / virtualhost:
 //     CustomLog "/your/path/to/log" moodleformat
-// CAUTION: Use of this option will expose usernames in the Apache log,
+//
+// Alternatively for other webservers such as nginx, you can instead have the username sent via a http header
+// 'X-MOODLEUSER' which can be saved in the logfile and then stripped out before being sent to the browser:
+//     $CFG->headerloguser = 0; // Turn this feature off. Default value.
+//     $CFG->headerloguser = 1; // Log user id.
+//     $CFG->headerloguser = 2; // Log full name in cleaned format. ie, Darth Vader will be displayed as darth_vader.
+//     $CFG->headerloguser = 3; // Log username.
+//
+// CAUTION: Use of this option will expose usernames in the Apache / nginx log,
 // If you are going to publish your log, or the output of your web stats analyzer
 // this will weaken the security of your website.
 //

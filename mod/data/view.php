@@ -25,7 +25,6 @@
     require_once(__DIR__ . '/../../config.php');
     require_once($CFG->dirroot . '/mod/data/lib.php');
     require_once($CFG->libdir . '/rsslib.php');
-    require_once($CFG->libdir . '/completionlib.php');
 
 /// One of these is necessary!
     $id = optional_param('id', 0, PARAM_INT);  // course module id
@@ -255,15 +254,8 @@
         set_user_preference('data_perpage_'.$data->id, $perpage);
     }
 
-    $params = array(
-        'context' => $context,
-        'objectid' => $data->id
-    );
-    $event = \mod_data\event\course_module_viewed::create($params);
-    $event->add_record_snapshot('course_modules', $cm);
-    $event->add_record_snapshot('course', $course);
-    $event->add_record_snapshot('data', $data);
-    $event->trigger();
+    // Completion and trigger events.
+    data_view($data, $course, $cm, $context);
 
     $urlparams = array('d' => $data->id);
     if ($record) {
@@ -299,10 +291,6 @@
     if ($data->jstemplate) {
         $PAGE->requires->js('/mod/data/js.php?d='.$data->id, true);
     }
-
-    // Mark as viewed
-    $completion = new completion_info($course);
-    $completion->set_module_viewed($cm);
 
 /// Print the page header
     // Note: MDL-19010 there will be further changes to printing header and blocks.
@@ -824,16 +812,19 @@ if ($showactivity) {
                         'type' => 'button',
                         'id' => 'checkall',
                         'value' => get_string('selectall'),
+                        'class' => 'btn btn-secondary m-r-1'
                     ));
                 echo html_writer::empty_tag('input', array(
                         'type' => 'button',
                         'id' => 'checknone',
                         'value' => get_string('deselectall'),
+                        'class' => 'btn btn-secondary m-r-1'
                     ));
                 echo html_writer::empty_tag('input', array(
                         'class' => 'form-submit',
                         'type' => 'submit',
                         'value' => get_string('deleteselected'),
+                        'class' => 'btn btn-secondary m-r-1'
                     ));
 
                 $module = array('name' => 'mod_data', 'fullpath' => '/mod/data/module.js');

@@ -226,6 +226,7 @@ abstract class core_filetypes {
             'rtx' => array('type' => 'text/richtext', 'icon' => 'text'),
             'rv' => array('type' => 'audio/x-pn-realaudio-plugin', 'icon' => 'audio',
                     'groups' => array('video'), 'string' => 'video'),
+            'scss' => array('type' => 'text/x-scss', 'icon' => 'text', 'groups' => array('web_file')),
             'sh' => array('type' => 'application/x-sh', 'icon' => 'sourcecode'),
             'sit' => array('type' => 'application/x-stuffit', 'icon' => 'archive',
                     'groups' => array('archive'), 'string' => 'archive'),
@@ -288,6 +289,23 @@ abstract class core_filetypes {
 
             'zip' => array('type' => 'application/zip', 'icon' => 'archive', 'groups' => array('archive'), 'string' => 'archive')
         );
+    }
+
+    /**
+     * Given a mimetype - return a valid file extension for it.
+     *
+     * @param $mimetype string
+     * @return string|bool False if the mimetype was not known, a string indicating a valid file extension otherwise. It may not
+     *                     be the only valid file extension - just the first one found.
+     */
+    public static function get_file_extension($mimetype) {
+        $types = self::get_types();
+        foreach ($types as $extension => $info) {
+            if ($info['type'] == $mimetype) {
+                return $extension;
+            }
+        }
+        return false;
     }
 
     /**

@@ -322,7 +322,9 @@ class page_requirements_manager {
                 'theme'               => $page->theme->name,
                 'jsrev'               => $this->get_jsrev(),
                 'admin'               => $CFG->admin,
-                'svgicons'            => $page->theme->use_svg_icons()
+                'svgicons'            => $page->theme->use_svg_icons(),
+                'usertimezone'        => usertimezone(),
+                'contextid'           => $page->context->id,
             );
             if ($CFG->debugdeveloper) {
                 $this->M_cfg['developerdebug'] = true;
@@ -730,7 +732,11 @@ class page_requirements_manager {
                 case 'core_filepicker':
                     $module = array('name'     => 'core_filepicker',
                                     'fullpath' => '/repository/filepicker.js',
-                                    'requires' => array('base', 'node', 'node-event-simulate', 'json', 'async-queue', 'io-base', 'io-upload-iframe', 'io-form', 'yui2-treeview', 'panel', 'cookie', 'datatable', 'datatable-sort', 'resize-plugin', 'dd-plugin', 'escape', 'moodle-core_filepicker'),
+                                    'requires' => array(
+                                        'base', 'node', 'node-event-simulate', 'json', 'async-queue', 'io-base', 'io-upload-iframe', 'io-form',
+                                        'yui2-treeview', 'panel', 'cookie', 'datatable', 'datatable-sort', 'resize-plugin', 'dd-plugin',
+                                        'escape', 'moodle-core_filepicker', 'moodle-core-notification-dialogue'
+                                    ),
                                     'strings'  => array(array('lastmodified', 'moodle'), array('name', 'moodle'), array('type', 'repository'), array('size', 'repository'),
                                                         array('invalidjson', 'repository'), array('error', 'moodle'), array('info', 'moodle'),
                                                         array('nofilesattached', 'repository'), array('filepicker', 'repository'), array('logout', 'repository'),
@@ -743,7 +749,7 @@ class page_requirements_manager {
                 case 'core_comment':
                     $module = array('name'     => 'core_comment',
                                     'fullpath' => '/comment/comment.js',
-                                    'requires' => array('base', 'io-base', 'node', 'json', 'yui2-animation', 'overlay'),
+                                    'requires' => array('base', 'io-base', 'node', 'json', 'yui2-animation', 'overlay', 'escape'),
                                     'strings' => array(array('confirmdeletecomments', 'admin'), array('yes', 'moodle'), array('no', 'moodle'))
                                 );
                     break;
@@ -1403,7 +1409,6 @@ class page_requirements_manager {
 
         $baserollups = array(
             'rollup/' . $rollupversion . "/yui-moodlesimple{$yuiformat}.js",
-            'rollup/' . $jsrev . "/mcore{$format}.js",
         );
 
         if ($this->yui3loader->combine) {

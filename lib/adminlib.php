@@ -2946,6 +2946,8 @@ class admin_setting_configmulticheckbox2 extends admin_setting_configmulticheckb
 class admin_setting_configselect extends admin_setting {
     /** @var array Array of choices value=>label */
     public $choices;
+    /** @var array Array of choices grouped using optgroups */
+    public $optgroups;
 
     /**
      * Constructor
@@ -2956,7 +2958,18 @@ class admin_setting_configselect extends admin_setting {
      * @param array $choices array of $value=>$label for each selection
      */
     public function __construct($name, $visiblename, $description, $defaultsetting, $choices) {
-        $this->choices = $choices;
+        // Look for optgroup and single options.
+        if (is_array($choices)) {
+            foreach ($choices as $key => $val) {
+                if (is_array($val)) {
+                    $this->optgroups[$key] = $val;
+                    $this->choices = array_merge($this->choices, $val);
+                } else {
+                    $this->choices[$key] = $val;
+                }
+            }
+        }
+
         parent::__construct($name, $visiblename, $description, $defaultsetting);
     }
 
@@ -3089,6 +3102,27 @@ class admin_setting_configselect extends admin_setting {
         }
 
         $options = [];
+        $template = 'core_admin/setting_configselect';
+
+        if (!empty($this->optgroups)) {
+            $optgroups = [];
+            foreach ($this->optgroups as $label => $choices) {
+                $optgroup = array('label' => $label, 'options' => []);
+                foreach ($choices as $value => $name) {
+                    $optgroup['options'][] = [
+                        'value' => $value,
+                        'name' => $name,
+                        'selected' => (string) $value == $data
+                    ];
+                    unset($this->choices[$value]);
+                }
+                $optgroups[] = $optgroup;
+            }
+            $context->options = $options;
+            $context->optgroups = $optgroups;
+            $template = 'core_admin/setting_configselect_optgroup';
+        }
+
         foreach ($this->choices as $value => $name) {
             $options[] = [
                 'value' => $value,
@@ -3098,7 +3132,7 @@ class admin_setting_configselect extends admin_setting {
         }
         $context->options = $options;
 
-        $element = $OUTPUT->render_from_template('core_admin/setting_configselect', $context);
+        $element = $OUTPUT->render_from_template($template, $context);
 
         return format_admin_setting($this, $this->visiblename, $element, $this->description, true, $warning, $defaultinfo, $query);
     }
@@ -3221,6 +3255,29 @@ class admin_setting_configmultiselect extends admin_setting_configselect {
 
         $defaults = [];
         $options = [];
+        $template = 'core_admin/setting_configmultiselect';
+
+        if (!empty($this->optgroups)) {
+            $optgroups = [];
+            foreach ($this->optgroups as $label => $choices) {
+                $optgroup = array('label' => $label, 'options' => []);
+                foreach ($choices as $value => $name) {
+                    if (in_array($value, $default)) {
+                        $defaults[] = $name;
+                    }
+                    $optgroup['options'][] = [
+                        'value' => $value,
+                        'name' => $name,
+                        'selected' => in_array($value, $data)
+                    ];
+                    unset($this->choices[$value]);
+                }
+                $optgroups[] = $optgroup;
+            }
+            $context->optgroups = $optgroups;
+            $template = 'core_admin/setting_configmultiselect_optgroup';
+        }
+
         foreach ($this->choices as $value => $name) {
             if (in_array($value, $default)) {
                 $defaults[] = $name;
@@ -3241,7 +3298,7 @@ class admin_setting_configmultiselect extends admin_setting_configselect {
             $defaultinfo = get_string('none');
         }
 
-        $element = $OUTPUT->render_from_template('core_admin/setting_configmultiselect', $context);
+        $element = $OUTPUT->render_from_template($template, $context);
 
         return format_admin_setting($this, $this->visiblename, $element, $this->description, true, '', $defaultinfo, $query);
     }
@@ -3580,6 +3637,179 @@ class admin_setting_configiplist extends admin_setting_configtextarea {
         } else {
             return get_string('validateiperror', 'admin', join(', ', $badips));
         }
+    }
+}
+
+/**
+ * Used to validate a textarea used for domain names, wildcard domain names and IP addresses/ranges (both IPv4 and IPv6 format).
+ *
+ * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @copyright 2016 Jake Dallimore (jrhdallimore@gmail.com)
+ */
+class admin_setting_configmixedhostiplist extends admin_setting_configtextarea {
+
+    /**
+     * Validate the contents of the textarea as either IP addresses, domain name or wildcard domain name (RFC 4592).
+     * Used to validate a new line separated list of entries collected from a textarea control.
+     *
+     * This setting provides support for internationalised domain names (IDNs), however, such UTF-8 names will be converted to
+     * their ascii-compatible encoding (punycode) on save, and converted back to their UTF-8 representation when fetched
+     * via the get_setting() method, which has been overriden.
+     *
+     * @param string $data A list of FQDNs, DNS wildcard format domains, and IP addresses, separated by new lines.
+     * @return mixed bool true for success or string:error on failure
+     */
+    public function validate($data) {
+        if (empty($data)) {
+            return true;
+        }
+        $entries = explode("\n", $data);
+        $badentries = [];
+
+        foreach ($entries as $key => $entry) {
+            $entry = trim($entry);
+            if (empty($entry)) {
+                return get_string('validateemptylineerror', 'admin');
+            }
+
+            // Validate each string entry against the supported formats.
+            if (\core\ip_utils::is_ip_address($entry) || \core\ip_utils::is_ipv6_range($entry)
+                    || \core\ip_utils::is_ipv4_range($entry) || \core\ip_utils::is_domain_name($entry)
+                    || \core\ip_utils::is_domain_matching_pattern($entry)) {
+                continue;
+            }
+
+            // Otherwise, the entry is invalid.
+            $badentries[] = $entry;
+        }
+
+        if ($badentries) {
+            return get_string('validateerrorlist', 'admin', join(', ', $badentries));
+        }
+        return true;
+    }
+
+    /**
+     * Convert any lines containing international domain names (IDNs) to their ascii-compatible encoding (ACE).
+     *
+     * @param string $data the setting data, as sent from the web form.
+     * @return string $data the setting data, with all IDNs converted (using punycode) to their ascii encoded version.
+     */
+    protected function ace_encode($data) {
+        if (empty($data)) {
+            return $data;
+        }
+        $entries = explode("\n", $data);
+        foreach ($entries as $key => $entry) {
+            $entry = trim($entry);
+            // This regex matches any string which:
+            // a) contains at least one non-ascii unicode character AND
+            // b) starts with a-zA-Z0-9 or any non-ascii unicode character AND
+            // c) ends with a-zA-Z0-9 or any non-ascii unicode character
+            // d) contains a-zA-Z0-9, hyphen, dot or any non-ascii unicode characters in the middle.
+            if (preg_match('/^(?=[^\x00-\x7f])([^\x00-\x7f]|[a-zA-Z0-9])([^\x00-\x7f]|[a-zA-Z0-9-.])*([^\x00-\x7f]|[a-zA-Z0-9])$/',
+                $entry)) {
+                // If we can convert the unicode string to an idn, do so.
+                // Otherwise, leave the original unicode string alone and let the validation function handle it (it will fail).
+                $val = idn_to_ascii($entry);
+                $entries[$key] = $val ? $val : $entry;
+            }
+        }
+        return implode("\n", $entries);
+    }
+
+    /**
+     * Decode any ascii-encoded domain names back to their utf-8 representation for display.
+     *
+     * @param string $data the setting data, as found in the database.
+     * @return string $data the setting data, with all ascii-encoded IDNs decoded back to their utf-8 representation.
+     */
+    protected function ace_decode($data) {
+        $entries = explode("\n", $data);
+        foreach ($entries as $key => $entry) {
+            $entry = trim($entry);
+            if (strpos($entry, 'xn--') !== false) {
+                $entries[$key] = idn_to_utf8($entry);
+            }
+        }
+        return implode("\n", $entries);
+    }
+
+    /**
+     * Override, providing utf8-decoding for ascii-encoded IDN strings.
+     *
+     * @return mixed returns punycode-converted setting string if successful, else null.
+     */
+    public function get_setting() {
+        // Here, we need to decode any ascii-encoded IDNs back to their native, utf-8 representation.
+        $data = $this->config_read($this->name);
+        if (function_exists('idn_to_utf8') && !is_null($data)) {
+            $data = $this->ace_decode($data);
+        }
+        return $data;
+    }
+
+    /**
+     * Override, providing ascii-encoding for utf8 (native) IDN strings.
+     *
+     * @param string $data
+     * @return string
+     */
+    public function write_setting($data) {
+        if ($this->paramtype === PARAM_INT and $data === '') {
+            // Do not complain if '' used instead of 0.
+            $data = 0;
+        }
+
+        // Try to convert any non-ascii domains to ACE prior to validation - we can't modify anything in validate!
+        if (function_exists('idn_to_ascii')) {
+            $data = $this->ace_encode($data);
+        }
+
+        $validated = $this->validate($data);
+        if ($validated !== true) {
+            return $validated;
+        }
+        return ($this->config_write($this->name, $data) ? '' : get_string('errorsetting', 'admin'));
+    }
+}
+
+/**
+ * Used to validate a textarea used for port numbers.
+ *
+ * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @copyright 2016 Jake Dallimore (jrhdallimore@gmail.com)
+ */
+class admin_setting_configportlist extends admin_setting_configtextarea {
+
+    /**
+     * Validate the contents of the textarea as port numbers.
+     * Used to validate a new line separated list of ports collected from a textarea control.
+     *
+     * @param string $data A list of ports separated by new lines
+     * @return mixed bool true for success or string:error on failure
+     */
+    public function validate($data) {
+        if (empty($data)) {
+            return true;
+        }
+        $ports = explode("\n", $data);
+        $badentries = [];
+        foreach ($ports as $port) {
+            $port = trim($port);
+            if (empty($port)) {
+                return get_string('validateemptylineerror', 'admin');
+            }
+
+            // Is the string a valid integer number?
+            if (strval(intval($port)) !== $port || intval($port) <= 0) {
+                $badentries[] = $port;
+            }
+        }
+        if ($badentries) {
+            return get_string('validateerrorlist', 'admin', $badentries);
+        }
+        return true;
     }
 }
 
@@ -7159,6 +7389,232 @@ class admin_page_managefilters extends admin_externalpage {
 }
 
 /**
+ * Generic class for managing plugins in a table that allows re-ordering and enable/disable of each plugin.
+ * Requires a get_rank method on the plugininfo class for sorting.
+ *
+ * @copyright 2017 Damyon Wiese
+ * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+abstract class admin_setting_manage_plugins extends admin_setting {
+
+    /**
+     * Get the admin settings section name (just a unique string)
+     *
+     * @return string
+     */
+    public function get_section_name() {
+        return 'manage' . $this->get_plugin_type() . 'plugins';
+    }
+
+    /**
+     * Get the admin settings section title (use get_string).
+     *
+     * @return string
+     */
+    abstract public function get_section_title();
+
+    /**
+     * Get the type of plugin to manage.
+     *
+     * @return string
+     */
+    abstract public function get_plugin_type();
+
+    /**
+     * Get the name of the second column.
+     *
+     * @return string
+     */
+    public function get_info_column_name() {
+        return '';
+    }
+
+    /**
+     * Get the type of plugin to manage.
+     *
+     * @param plugininfo The plugin info class.
+     * @return string
+     */
+    abstract public function get_info_column($plugininfo);
+
+    /**
+     * Calls parent::__construct with specific arguments
+     */
+    public function __construct() {
+        $this->nosave = true;
+        parent::__construct($this->get_section_name(), $this->get_section_title(), '', '');
+    }
+
+    /**
+     * Always returns true, does nothing
+     *
+     * @return true
+     */
+    public function get_setting() {
+        return true;
+    }
+
+    /**
+     * Always returns true, does nothing
+     *
+     * @return true
+     */
+    public function get_defaultsetting() {
+        return true;
+    }
+
+    /**
+     * Always returns '', does not write anything
+     *
+     * @param mixed $data
+     * @return string Always returns ''
+     */
+    public function write_setting($data) {
+        // Do not write any setting.
+        return '';
+    }
+
+    /**
+     * Checks if $query is one of the available plugins of this type
+     *
+     * @param string $query The string to search for
+     * @return bool Returns true if found, false if not
+     */
+    public function is_related($query) {
+        if (parent::is_related($query)) {
+            return true;
+        }
+
+        $query = core_text::strtolower($query);
+        $plugins = core_plugin_manager::instance()->get_plugins_of_type($this->get_plugin_type());
+        foreach ($plugins as $name => $plugin) {
+            $localised = $plugin->displayname;
+            if (strpos(core_text::strtolower($name), $query) !== false) {
+                return true;
+            }
+            if (strpos(core_text::strtolower($localised), $query) !== false) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The URL for the management page for this plugintype.
+     *
+     * @return moodle_url
+     */
+    protected function get_manage_url() {
+        return new moodle_url('/admin/updatesetting.php');
+    }
+
+    /**
+     * Builds the HTML to display the control.
+     *
+     * @param string $data Unused
+     * @param string $query
+     * @return string
+     */
+    public function output_html($data, $query = '') {
+        global $CFG, $OUTPUT, $DB, $PAGE;
+
+        $context = (object) [
+            'manageurl' => new moodle_url($this->get_manage_url(), [
+                    'type' => $this->get_plugin_type(),
+                    'sesskey' => sesskey(),
+                ]),
+            'infocolumnname' => $this->get_info_column_name(),
+            'plugins' => [],
+        ];
+
+        $pluginmanager = core_plugin_manager::instance();
+        $allplugins = $pluginmanager->get_plugins_of_type($this->get_plugin_type());
+        $enabled = $pluginmanager->get_enabled_plugins($this->get_plugin_type());
+        $plugins = array_merge($enabled, $allplugins);
+        foreach ($plugins as $key => $plugin) {
+            $pluginlink = new moodle_url($context->manageurl, ['plugin' => $key]);
+
+            $pluginkey = (object) [
+                'plugin' => $plugin->displayname,
+                'enabled' => $plugin->is_enabled(),
+                'togglelink' => '',
+                'moveuplink' => '',
+                'movedownlink' => '',
+                'settingslink' => $plugin->get_settings_url(),
+                'uninstalllink' => '',
+                'info' => '',
+            ];
+
+            // Enable/Disable link.
+            $togglelink = new moodle_url($pluginlink);
+            if ($plugin->is_enabled()) {
+                $toggletarget = false;
+                $togglelink->param('action', 'disable');
+
+                if (count($context->plugins)) {
+                    // This is not the first plugin.
+                    $pluginkey->moveuplink = new moodle_url($pluginlink, ['action' => 'up']);
+                }
+
+                if (count($enabled) > count($context->plugins) + 1) {
+                    // This is not the last plugin.
+                    $pluginkey->movedownlink = new moodle_url($pluginlink, ['action' => 'down']);
+                }
+
+                $pluginkey->info = $this->get_info_column($plugin);
+            } else {
+                $toggletarget = true;
+                $togglelink->param('action', 'enable');
+            }
+
+            $pluginkey->toggletarget = $toggletarget;
+            $pluginkey->togglelink = $togglelink;
+
+            $frankenstyle = $plugin->type . '_' . $plugin->name;
+            if ($uninstalllink = core_plugin_manager::instance()->get_uninstall_url($frankenstyle, 'manage')) {
+                // This plugin supports uninstallation.
+                $pluginkey->uninstalllink = $uninstalllink;
+            }
+
+            if (!empty($this->get_info_column_name())) {
+                // This plugintype has an info column.
+                $pluginkey->info = $this->get_info_column($plugin);
+            }
+
+            $context->plugins[] = $pluginkey;
+        }
+
+        $str = $OUTPUT->render_from_template('core_admin/setting_manage_plugins', $context);
+        return highlight($query, $str);
+    }
+}
+
+/**
+ * Generic class for managing plugins in a table that allows re-ordering and enable/disable of each plugin.
+ * Requires a get_rank method on the plugininfo class for sorting.
+ *
+ * @copyright 2017 Andrew Nicols <andrew@nicols.co.uk>
+* @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+class admin_setting_manage_fileconverter_plugins extends admin_setting_manage_plugins {
+    public function get_section_title() {
+        return get_string('type_fileconverter_plural', 'plugin');
+    }
+
+    public function get_plugin_type() {
+        return 'fileconverter';
+    }
+
+    public function get_info_column_name() {
+        return get_string('supportedconversions', 'plugin');
+    }
+
+    public function get_info_column($plugininfo) {
+        return $plugininfo->get_supported_conversions();
+    }
+}
+
+/**
  * Special class for media player plugins management.
  *
  * @copyright 2016 Marina Glancy
@@ -8634,22 +9090,6 @@ class admin_setting_webservicesoverview extends admin_setting {
         $return = "";
         $brtag = html_writer::empty_tag('br');
 
-        // Enable mobile web service
-        $enablemobile = new admin_setting_enablemobileservice('enablemobilewebservice',
-                get_string('enablemobilewebservice', 'admin'),
-                get_string('configenablemobilewebservice',
-                        'admin', ''), 0); //we don't want to display it but to know the ws mobile status
-        $manageserviceurl = new moodle_url("/admin/settings.php?section=mobile");
-        $wsmobileparam = new stdClass();
-        $wsmobileparam->enablemobileservice = get_string('enablemobilewebservice', 'admin');
-        $wsmobileparam->manageservicelink = html_writer::link($manageserviceurl,
-                get_string('mobile', 'admin'));
-        $mobilestatus = $enablemobile->get_setting()?get_string('mobilewsenabled', 'webservice'):get_string('mobilewsdisabled', 'webservice');
-        $wsmobileparam->wsmobilestatus = html_writer::tag('strong', $mobilestatus);
-        $return .= $OUTPUT->heading(get_string('enablemobilewebservice', 'admin'), 3, 'main');
-        $return .= $brtag . get_string('enablemobilewsoverview', 'webservice', $wsmobileparam)
-                . $brtag . $brtag;
-
         /// One system controlling Moodle with Token
         $return .= $OUTPUT->heading(get_string('onesystemcontrolling', 'webservice'), 3, 'main');
         $table = new html_table();
@@ -10022,4 +10462,42 @@ class admin_setting_searchsetupinfo extends admin_setting {
         return highlight($query, $return);
     }
 
+}
+
+/**
+ * Used to validate the contents of SCSS code and ensuring they are parsable.
+ *
+ * It does not attempt to detect undefined SCSS variables because it is designed
+ * to be used without knowledge of other config/scss included.
+ *
+ * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @copyright 2016 Dan Poltawski <dan@moodle.com>
+ */
+class admin_setting_scsscode extends admin_setting_configtextarea {
+
+    /**
+     * Validate the contents of the SCSS to ensure its parsable. Does not
+     * attempt to detect undefined scss variables.
+     *
+     * @param string $data The scss code from text field.
+     * @return mixed bool true for success or string:error on failure.
+     */
+    public function validate($data) {
+        if (empty($data)) {
+            return true;
+        }
+
+        $scss = new core_scss();
+        try {
+            $scss->compile($data);
+        } catch (Leafo\ScssPhp\Exception\ParserException $e) {
+            return get_string('scssinvalid', 'admin', $e->getMessage());
+        } catch (Leafo\ScssPhp\Exception\CompilerException $e) {
+            // Silently ignore this - it could be a scss variable defined from somewhere
+            // else which we are not examining here.
+            return true;
+        }
+
+        return true;
+    }
 }

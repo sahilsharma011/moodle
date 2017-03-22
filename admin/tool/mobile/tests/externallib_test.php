@@ -64,6 +64,9 @@ class tool_mobile_external_testcase extends externallib_advanced_testcase {
 
         // Test default values.
         $context = context_system::instance();
+        list($authinstructions, $notusedformat) = external_format_text($CFG->auth_instructions, FORMAT_MOODLE, $context->id);
+        list($maintenancemessage, $notusedformat) = external_format_text($CFG->maintenance_message, FORMAT_MOODLE, $context->id);
+
         $expected = array(
             'wwwroot' => $CFG->wwwroot,
             'httpswwwroot' => $CFG->httpswwwroot,
@@ -73,13 +76,15 @@ class tool_mobile_external_testcase extends externallib_advanced_testcase {
             'authloginviaemail' => $CFG->authloginviaemail,
             'registerauth' => $CFG->registerauth,
             'forgottenpasswordurl' => $CFG->forgottenpasswordurl,
-            'authinstructions' => format_text($CFG->auth_instructions),
+            'authinstructions' => $authinstructions,
             'authnoneenabled' => (int) is_enabled_auth('none'),
             'enablewebservices' => $CFG->enablewebservices,
             'enablemobilewebservice' => $CFG->enablemobilewebservice,
             'maintenanceenabled' => $CFG->maintenance_enabled,
-            'maintenancemessage' => format_text($CFG->maintenance_message),
+            'maintenancemessage' => $maintenancemessage,
             'typeoflogin' => api::LOGIN_VIA_APP,
+            'mobilecssurl' => '',
+            'tool_mobile_disabledfeatures' => '',
             'warnings' => array()
         );
         $this->assertEquals($expected, $result);
@@ -92,8 +97,9 @@ class tool_mobile_external_testcase extends externallib_advanced_testcase {
         set_config('logo', 'mock.png', 'core_admin');
         set_config('logocompact', 'mock.png', 'core_admin');
 
+        list($authinstructions, $notusedformat) = external_format_text($authinstructions, FORMAT_MOODLE, $context->id);
         $expected['registerauth'] = 'email';
-        $expected['authinstructions'] = format_text($authinstructions);
+        $expected['authinstructions'] = $authinstructions;
         $expected['typeoflogin'] = api::LOGIN_VIA_BROWSER;
         $expected['launchurl'] = "$CFG->wwwroot/$CFG->admin/tool/mobile/launch.php";
 
@@ -120,12 +126,16 @@ class tool_mobile_external_testcase extends externallib_advanced_testcase {
         $result = external::get_config();
         $result = external_api::clean_returnvalue(external::get_config_returns(), $result);
 
+        // SITE summary is null in phpunit which gets transformed to an empty string by format_text.
+        list($sitesummary, $unused) = external_format_text($SITE->summary, $SITE->summaryformat, context_system::instance()->id);
+
         // Test default values.
         $context = context_system::instance();
         $expected = array(
             array('name' => 'fullname', 'value' => $SITE->fullname),
             array('name' => 'shortname', 'value' => $SITE->shortname),
-            array('name' => 'summary', 'value' => $SITE->summary),
+            array('name' => 'summary', 'value' => $sitesummary),
+            array('name' => 'summaryformat', 'value' => FORMAT_HTML),
             array('name' => 'frontpage', 'value' => $CFG->frontpage),
             array('name' => 'frontpageloggedin', 'value' => $CFG->frontpageloggedin),
             array('name' => 'maxcategorydepth', 'value' => $CFG->maxcategorydepth),
@@ -135,15 +145,19 @@ class tool_mobile_external_testcase extends externallib_advanced_testcase {
             array('name' => 'commentsperpage', 'value' => $CFG->commentsperpage),
             array('name' => 'disableuserimages', 'value' => $CFG->disableuserimages),
             array('name' => 'mygradesurl', 'value' => user_mygrades_url()->out(false)),
+            array('name' => 'tool_mobile_forcelogout', 'value' => 0),
+            array('name' => 'tool_mobile_customlangstrings', 'value' => ''),
+            array('name' => 'tool_mobile_disabledfeatures', 'value' => ''),
+            array('name' => 'tool_mobile_custommenuitems', 'value' => ''),
         );
         $this->assertCount(0, $result['warnings']);
         $this->assertEquals($expected, $result['settings']);
 
         // Change a value and retrieve filtering by section.
         set_config('commentsperpage', 1);
-        $expected[9]['value'] = 1;
-        unset($expected[10]);
-        unset($expected[11]);
+        $expected[10]['value'] = 1;
+        // Remove not expected elements.
+        array_splice($expected, 11);
 
         $result = external::get_config('frontpagesettings');
         $result = external_api::clean_returnvalue(external::get_config_returns(), $result);
@@ -173,6 +187,9 @@ class tool_mobile_external_testcase extends externallib_advanced_testcase {
         $CFG->enablewebservices = 1;
         $CFG->enablemobilewebservice = 1;
         $_GET['wstoken'] = $token->token;   // Mock parameters.
+
+        // Even if we force the password change for the current user we should be able to retrieve the key.
+        set_user_preference('auth_forcepasswordchange', 1, $user->id);
 
         $this->setCurrentTimeStart();
         $result = external::get_autologin_key($token->privatetoken);

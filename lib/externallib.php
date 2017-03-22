@@ -239,6 +239,7 @@ class external_api {
         } catch (Exception $e) {
             $exception = get_exception_info($e);
             unset($exception->a);
+            $exception->backtrace = format_backtrace($exception->backtrace, true);
             if (!debugging('', DEBUG_DEVELOPER)) {
                 unset($exception->debuginfo);
                 unset($exception->backtrace);
@@ -1351,5 +1352,52 @@ class external_files extends external_multiple_structure {
             $desc,
             $required
         );
+    }
+
+    /**
+     * Return the properties ready to be used by an exporter.
+     *
+     * @return array properties
+     * @since  Moodle 3.3
+     */
+    public static function get_properties_for_exporter() {
+        return [
+            'filename' => array(
+                'type' => PARAM_FILE,
+                'description' => 'File name.',
+                'optional' => true,
+                'null' => NULL_NOT_ALLOWED,
+            ),
+            'filepath' => array(
+                'type' => PARAM_PATH,
+                'description' => 'File path.',
+                'optional' => true,
+                'null' => NULL_NOT_ALLOWED,
+            ),
+            'filesize' => array(
+                'type' => PARAM_INT,
+                'description' => 'File size.',
+                'optional' => true,
+                'null' => NULL_NOT_ALLOWED,
+            ),
+            'fileurl' => array(
+                'type' => PARAM_URL,
+                'description' => 'Downloadable file url.',
+                'optional' => true,
+                'null' => NULL_NOT_ALLOWED,
+            ),
+            'timemodified' => array(
+                'type' => PARAM_INT,
+                'description' => 'Time modified.',
+                'optional' => true,
+                'null' => NULL_NOT_ALLOWED,
+            ),
+            'mimetype' => array(
+                'type' => PARAM_RAW,
+                'description' => 'File mime type.',
+                'optional' => true,
+                'null' => NULL_NOT_ALLOWED,
+            ),
+        ];
     }
 }

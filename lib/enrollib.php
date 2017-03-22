@@ -145,13 +145,15 @@ function enrol_get_plugin($name) {
 
     $location = "$CFG->dirroot/enrol/$name";
 
-    if (!file_exists("$location/lib.php")) {
-        return null;
-    }
-    include_once("$location/lib.php");
     $class = "enrol_{$name}_plugin";
     if (!class_exists($class)) {
-        return null;
+        if (!file_exists("$location/lib.php")) {
+            return null;
+        }
+        include_once("$location/lib.php");
+        if (!class_exists($class)) {
+            return null;
+        }
     }
 
     return new $class();
@@ -1176,6 +1178,10 @@ function is_enrolled(context $context, $user = null, $withcapability = '', $only
 /**
  * Returns an array of joins, wheres and params that will limit the group of
  * users to only those enrolled and with given capability (if specified).
+ *
+ * Note this join will return duplicate rows for users who have been enrolled
+ * several times (e.g. as manual enrolment, and as self enrolment). You may
+ * need to use a SELECT DISTINCT in your query (see get_enrolled_sql for example).
  *
  * @param context $context
  * @param string $prefix optional, a prefix to the user id column

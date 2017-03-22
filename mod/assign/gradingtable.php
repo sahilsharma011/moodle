@@ -287,6 +287,9 @@ class assign_grading_table extends table_sql implements renderable {
                 $where .= '))';
                 $params['submitted'] = ASSIGN_SUBMISSION_STATUS_SUBMITTED;
 
+            } else if ($filter == ASSIGN_FILTER_GRANTED_EXTENSION) {
+                $where .= ' AND uf.extensionduedate > 0 ';
+
             } else if (strpos($filter, ASSIGN_FILTER_SINGLE_USER) === 0) {
                 $userfilter = (int) array_pop(explode('=', $filter));
                 $where .= ' AND (u.id = :userid)';
@@ -307,9 +310,6 @@ class assign_grading_table extends table_sql implements renderable {
                         $params['markerid'] = $markerfilter;
                     }
                 }
-            } else { // Only show users allocated to this marker.
-                $where .= ' AND uf.allocatedmarker = :markerid';
-                $params['markerid'] = $USER->id;
             }
         }
 
@@ -652,8 +652,9 @@ class assign_grading_table extends table_sql implements renderable {
             list($sort, $params) = users_order_by_sql();
             $markers = get_users_by_capability($this->assignment->get_context(), 'mod/assign:grade', '', $sort);
             $markerlist[0] = get_string('choosemarker', 'assign');
+            $viewfullnames = has_capability('moodle/site:viewfullnames', $this->assignment->get_context());
             foreach ($markers as $marker) {
-                $markerlist[$marker->id] = fullname($marker);
+                $markerlist[$marker->id] = fullname($marker, $viewfullnames);
             }
         }
         if (empty($markerlist)) {
@@ -662,7 +663,8 @@ class assign_grading_table extends table_sql implements renderable {
         }
         if ($this->is_downloading()) {
             if (isset($markers[$row->allocatedmarker])) {
-                return fullname($markers[$row->allocatedmarker]);
+                return fullname($markers[$row->allocatedmarker],
+                        has_capability('moodle/site:viewfullnames', $this->assignment->get_context()));
             } else {
                 return '';
             }
@@ -1035,6 +1037,9 @@ class assign_grading_table extends table_sql implements renderable {
         $due = $instance->duedate;
         if ($row->extensionduedate) {
             $due = $row->extensionduedate;
+        } else if (!empty($row->duedate)) {
+            // The override due date.
+            $due = $row->duedate;
         }
 
         $group = false;
